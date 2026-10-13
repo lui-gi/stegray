@@ -1,6 +1,7 @@
 """Terminal rendering of analyzer results."""
 
 import os
+from collections.abc import Sequence
 from typing import Any, TextIO
 
 # Lines of a tool's output shown on a terminal before eliding the rest.
@@ -18,6 +19,13 @@ _DIM = "2"
 _RED = "31"
 _GREEN = "1;32"
 _CYAN = "36"
+
+# 256-color codes handed out to the tools in turn, so each one keeps its own color
+# across runs. Red and green are left out: they mean failed and found.
+_TOOL_COLORS = tuple(
+    f"38;5;{n}"
+    for n in (39, 208, 141, 179, 73, 204, 105, 143, 37, 173, 177, 110, 215, 67, 169, 187, 99, 137)
+)
 
 
 def _count(number: int, noun: str) -> str:
@@ -44,8 +52,12 @@ class Reporter:
         color: bool | None = None,
         full: bool = False,
         name_width: int = 0,
+        tools: Sequence[str] = (),
     ) -> None:
-        """Configure colors and truncation from the stream unless overridden."""
+        """Configure colors and truncation from the stream unless overridden.
+
+        ``tools`` lists every analyzer in display order; a tool's position picks its color.
+        """
         self.stream = stream
         tty = stream.isatty()
         self.color = (tty and "NO_COLOR" not in os.environ) if color is None else color
@@ -53,12 +65,22 @@ class Reporter:
         self.full = full or not tty
         # Pads the names of one-line sections so their labels line up.
         self.name_width = name_width
+        self._tool_colors = {
+            name: _TOOL_COLORS[index % len(_TOOL_COLORS)] for index, name in enumerate(tools)
+        }
+        # Color of the vertical line, which follows the tool of the current section.
+        self._bar = _DIM
         self._outcomes: dict[str, list[str]] = {}
         # Whether the last section was a single line, so a run of them stays together.
         self._compact = False
 
     def _paint(self, text: str, code: str) -> str:
         return f"\033[{code}m{text}\033[0m" if self.color else text
+
+    def _tool(self, name: str, style: str, *, width: int = 0) -> str:
+        """Paint a tool's name in its own color on top of ``style``."""
+        color = self._tool_colors.get(name)
+        return self._paint(f"{name:<{width}}", f"{style};{color}" if color else style)
 
     def _print(self, text: str = "") -> None:
         print(text, file=self.stream)
@@ -79,7 +101,7 @@ class Reporter:
 
     def _gutter(self, text: str = "", *, last: bool = False, code: str | None = None) -> None:
         """Print one body line hanging off the section's vertical line."""
-        bar = self._paint("╰" if last else "│", _DIM)
+        bar = self._paint("╰" if last else "│", self._bar)
         self._print(f"{bar} {self._paint(text, code) if code else text}".rstrip())
 
     def _body(self, lines: list[str]) -> None:
@@ -92,10 +114,12 @@ class Reporter:
 
     def _title(self, name: str, outcome: str, result: dict[str, Any]) -> str:
         if outcome == NOTHING:
-            return self._paint(f"· {name:<{self.name_width}}  nothing found", _DIM)
+            padded = self._tool(name, _DIM, width=self.name_width)
+            return f"{self._paint('·', _DIM)} {padded}  {self._paint('nothing found', _DIM)}"
         if outcome == FAILED:
-            return self._paint(f"✗ {name:<{self.name_width}}  failed", _RED)
-        title = self._paint(name, _BOLD)
+            padded = self._tool(name, _BOLD, width=self.name_width)
+            return f"{self._paint('✗', _RED)} {padded}  {self._paint('failed', _RED)}"
+        title = self._tool(name, _BOLD)
         if outcome == FOUND:
             extracted = result.get("extracted")
             label = f"extracted {_count(len(extracted), 'file')}" if extracted else "found"
@@ -108,10 +132,12 @@ class Reporter:
     def section(self, name: str, result: dict[str, Any]) -> None:
         """Print one analyzer's result."""
         outcome = outcome_of(result)
-        self._outcomes.setdefault(outcome, []).append(name)
+        self._bar = self._tool_colors.get(name, _DIM)
         extracted: list[str] = result.get("extracted") or []
+        entry = self._tool(name, _DIM if outcome == NOTHING else _BOLD)
         if outcome == FOUND and extracted:
-            self._outcomes[outcome][-1] = f"{name} ({_count(len(extracted), 'file')})"
+            entry += f" ({_count(len(extracted), 'file')})"
+        self._outcomes.setdefault(outcome, []).append(entry)
 
         lines = self._lines(result.get("error") or []) + self._lines(result.get("output") or [])
         # A tool that found nothing only says so; its own words are kept for --full.
@@ -152,6 +178,7 @@ class Reporter:
             rows.append(("" if index else "skipped", f"{', '.join(names)} ({reason})", _DIM))
         if not rows:
             return
+        self._bar = _DIM
         self._print()
         self._print(self._paint("summary", _BOLD))
         pad = max(len(label) for label, _, _ in rows)

@@ -4,7 +4,9 @@ Tests needing an external tool are skipped when it is not installed; run them
 inside the container image to cover every analyzer.
 """
 
+import io
 import json
+import re
 import shutil
 import struct
 import zlib
@@ -15,6 +17,7 @@ import pytest
 from stegray.analyzers.pcrt import PCRTAnalyzer
 from stegray.cli import main
 from stegray.png import PNG
+from stegray.report import Reporter
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 STEGO_PASSWORD = "s3cret"  # noqa: S105 — the passphrase baked into the fixtures
@@ -99,6 +102,24 @@ def test_report_lists_skipped_tools(tmp_path: Path, capsys: pytest.CaptureFixtur
     assert "(file type)" in out
     assert "outguess (needs --deep)" in out
     assert "\033[" not in out  # no colors when not a terminal
+
+
+def test_each_tool_gets_its_own_color() -> None:
+    """A tool's name is painted the same distinct color in its section and the summary."""
+    stream = io.StringIO()
+    reporter = Reporter(stream, color=True, tools=["file", "strings"])
+    reporter.section("file", {"status": "ok", "note": "PNG image data"})
+    reporter.section("strings", {"status": "error"})
+    reporter.summary({})
+    out = stream.getvalue()
+    file_code, strings_code = (
+        re.search(rf"\033\[[\d;]*(38;5;\d+)m{name}", out) for name in ("file", "strings")
+    )
+    assert file_code
+    assert strings_code
+    assert file_code[1] != strings_code[1]
+    assert out.count(f"{file_code[1]}mfile") == 2
+    assert f"\033[{file_code[1]}m╰" in out
 
 
 def test_rerun_reuses_its_own_output_dir(tmp_path: Path) -> None:

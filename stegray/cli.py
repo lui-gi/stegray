@@ -123,6 +123,7 @@ def analyze(args: argparse.Namespace) -> int:
         color=False if args.no_color else None,
         full=args.full,
         name_width=max((len(cls.name) for cls in plan.selected), default=0),
+        tools=tool_order(),
     )
     if not args.json:
         reporter.header(
