@@ -1,0 +1,27 @@
+"""Exiftool Analyzer for stegray."""
+
+from pathlib import Path
+
+from .base_analyzer import SubprocessAnalyzer
+
+
+class ExiftoolAnalyzer(SubprocessAnalyzer):
+    """Analyzer for exiftool."""
+
+    name = "exiftool"
+    display_order = 40
+
+    def __init__(self, input_img: Path, output_dir: Path) -> None:
+        """Initialize the exiftool analyzer."""
+        super().__init__(input_img, output_dir)
+        self.cmd = ["exiftool", "-a", "-u", "-g1", self.img]
+
+    def process_output(self, stdout: str, stderr: str) -> dict[str, str]:
+        """Process the stdout into a list of lines."""
+        _ = stderr
+        metadata: dict[str, str] = {}
+        for line in stdout.split("\n"):
+            if ":" in line:
+                key, value = line.split(":", 1)
+                metadata[key.strip()] = value.strip()
+        return metadata

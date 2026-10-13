@@ -1,0 +1,30 @@
+"""Pngcheck Analyzer for stegray."""
+
+from pathlib import Path
+
+from .base_analyzer import SubprocessAnalyzer
+
+
+class PngcheckAnalyzer(SubprocessAnalyzer):
+    """Analyzer for pngcheck."""
+
+    name = "pngcheck"
+    display_order = 80
+    accepts = frozenset({"png"})
+
+    def __init__(self, input_img: Path, output_dir: Path) -> None:
+        """Initialize the pngcheck analyzer."""
+        super().__init__(input_img, output_dir)
+        self.cmd = ["pngcheck", "-v", self.img]
+
+    def is_error(self, returncode: int, stdout: str, stderr: str, *, zip_exist: bool) -> bool:
+        """Check whether the file is an unsupported format."""
+        _ = returncode, stderr, zip_exist
+        return "this is neither a PNG or JNG image nor a MNG stream" in stdout
+
+    def process_error(self, stdout: str, stderr: str) -> str:
+        """Process the stderr."""
+        _ = stderr
+        if "this is neither a PNG or JNG image nor a MNG stream" in stdout:
+            return "The file format of the file is not supported (PNG or JNG only)."
+        return stdout

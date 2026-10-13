@@ -1,0 +1,48 @@
+[project]
+name = "stegray"
+version = "0.1.0"
+description = "Command-line steganalysis toolkit: runs common stego tools against a file and reports what they find"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+authors = [
+    {name = "Luigi F."}
+]
+dependencies = []
+
+[project.scripts]
+stegray = "stegray.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "ruff",
+    "pytest",
+]
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["stegray*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# Vendored third-party files live in docker/ (Didier Stevens' pdfid.py, plus the
+# autotools config.guess/config.sub) and are copied verbatim into the image.
+extend-exclude = ["docker/", "*.md"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+# CPY001 wants a copyright header in every file; the terms live once in LICENSE.
+# D203/D213 are each half of a mutually exclusive pair (with D211/D212).
+# T201: printing is how a CLI reports.
+ignore = ["CPY001", "D203", "D213", "T201"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests use asserts and magic values by design.
+"tests/*" = ["S101", "INP001", "PLR2004"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

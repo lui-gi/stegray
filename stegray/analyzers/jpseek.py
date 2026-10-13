@@ -1,0 +1,63 @@
+"""JPSeek Analyzer for stegray."""
+
+from .base_analyzer import SubprocessAnalyzer
+
+
+class JpseekAnalyzer(SubprocessAnalyzer):
+    """Analyzer for jpseek."""
+
+    name = "jpseek"
+    has_archive = True
+    needs_password = True
+    display_order = 120
+    requires = ("jpseek", "expect")
+    accepts = frozenset({"jpeg"})
+
+    def build_cmd(self, password: str | None = None) -> list[str]:
+        """Build the jpseek command wrapped with expect for password support."""
+        extracted_dir = self.get_extracted_dir()
+        out = str(extracted_dir / "jpseek.out")
+        if password is None:
+            password = ""
+        # File paths are quoted with Tcl braces to prevent interpretation of
+        # special characters. The password is passed via an environment variable
+        # (JPSEEK_PASS) to avoid any command injection through string interpolation.
+        expect_script = (
+            f"spawn jpseek {{{self.img}}} {{{out}}}; "
+            'expect "Passphrase:"; '
+            'send "$env(JPSEEK_PASS)\\r"; '
+            "expect eof"
+        )
+        return ["env", f"JPSEEK_PASS={password}", "expect", "-c", expect_script]
+
+    def _remove_output_artifacts(self, output: str) -> str:
+        extracted_dir = self.get_extracted_dir()
+        out_file = str(extracted_dir / "jpseek.out")
+        o = output
+        o = o.replace("jpseek, version 0.3 (c) 1998 Allan Latham <alatham@flexsys-group.com>", "")
+        o = o.replace("This is licenced software but no charge is made for its use.", "")
+        o = o.replace("NO WARRANTY whatsoever is offered with this product.", "")
+        o = o.replace("NO LIABILITY whatsoever is accepted for its use.", "")
+        o = o.replace("You are using this entirely at your OWN RISK.", "")
+        o = o.replace("See the GNU Public Licence for full details.", "")
+        o = o.replace("Passphrase:", "")
+        o = o.replace(f"spawn jpseek {self.img} {out_file}", "")
+        return o.strip()
+
+    def is_error(self, returncode: int, stdout: str, stderr: str, *, zip_exist: bool) -> bool:
+        """Check if the result is an error."""
+        _ = zip_exist
+        return bool(returncode) and "File not completely recovered" not in f"{stdout}{stderr}"
+
+    def process_error(self, stdout: str, stderr: str) -> str:
+        """Process stderr."""
+        output = stdout + stderr
+        return self._remove_output_artifacts(output)
+
+    def process_output(self, stdout: str, stderr: str) -> str:
+        """Process stdout."""
+        output = stdout + stderr
+        output = self._remove_output_artifacts(output)
+        if output == "":
+            output = "File completely recovered."
+        return output

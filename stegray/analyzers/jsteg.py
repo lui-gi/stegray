@@ -1,0 +1,25 @@
+"""Jsteg Analyzer for stegray."""
+
+from pathlib import Path
+
+from .base_analyzer import SubprocessAnalyzer
+
+
+class JstegAnalyzer(SubprocessAnalyzer):
+    """Analyzer for jsteg."""
+
+    name = "jsteg"
+    display_order = 130
+    accepts = frozenset({"jpeg"})
+
+    def __init__(self, input_img: Path, output_dir: Path) -> None:
+        """Initialize the jsteg analyzer."""
+        super().__init__(input_img, output_dir)
+        self.cmd = ["jsteg", "reveal", self.img]
+
+    def process_output(self, stdout: str, stderr: str) -> str | list[str]:
+        """Process the stdout into lines."""
+        _ = stderr
+        if stdout.strip():
+            return [line for line in stdout.split("\n") if line.strip()]
+        return []
