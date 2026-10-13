@@ -1,7 +1,7 @@
 # stegray
 
 A command-line steganalysis toolkit. Point it at a file and it runs the usual
-stego tools in parallel, prints what each one found, and keeps anything they
+stego tools in parallel for speediness sake (CTFs in mind). Also keeps anything they
 extracted.
 
 ```console
